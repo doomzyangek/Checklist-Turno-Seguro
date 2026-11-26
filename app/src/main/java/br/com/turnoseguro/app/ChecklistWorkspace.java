@@ -2,6 +2,8 @@ package br.com.turnoseguro.app;
 
 import android.content.res.ColorStateList;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputFilter;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,13 +19,20 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.MetadataChanges;
+import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.Source;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,11 +41,17 @@ import java.util.Map;
 
 final class ChecklistWorkspace {
     private static final int MAX_ITEMS = 10;
+    private static final int HISTORY_PAGE_SIZE = 30;
+    private static final ZoneId FACTORY_ZONE = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter HISTORY_DATE =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm").withZone(FACTORY_ZONE);
     private static final String TYPE_PATTERN = "[a-z][a-z0-9-]{0,39}";
 
     private record ModelRow(EditText text, CheckBox critical, Button remove) {}
     private record AnswerRow(RadioGroup options, EditText observation, boolean critical) {}
 
+    private final Handler clock = new Handler(Looper.getMainLooper());
+    private final Runnable refreshDay = () -> showMachines();
     private final MainActivity activity;
     private final LinearLayout panel;
     private final FirebaseFirestore db = FirebaseFirestore.getInstance();
@@ -50,6 +65,9 @@ final class ChecklistWorkspace {
     private String machineId;
     private String checklistType;
     private boolean machineList;
+    private boolean historyScreen;
+    private int historyLimit = HISTORY_PAGE_SIZE;
+    private ListenerRegistration machineDetailsListener;
     private String operationId;
     private EditText justification;
     private String blockedInspectionId;
@@ -76,14 +94,18 @@ final class ChecklistWorkspace {
         }
         panel.setVisibility(View.VISIBLE);
         if (panel.getChildCount() != 0) {
-            if (machinesListener == null && machineList) {
+            if (machinesListener == null && historyScreen) {
+                showHistory(machineId, historyLimit);
+            } else if (machinesListener == null && machineList) {
                 showMachines();
             }
             return;
         }
         if ("supervisor".equals(role)) {
             String restoredMachine = draft == null ? null : draft.getString("machine");
-            if (restoredMachine != null) {
+            if (restoredMachine != null && draft.getBoolean("historyScreen")) {
+                showHistory(restoredMachine, draft.getInt("historyLimit", HISTORY_PAGE_SIZE));
+            } else if (restoredMachine != null) {
                 showRelease(restoredMachine, draft);
             } else if (draft != null && draft.getStringArrayList("items") != null) {
                 showModelEditor(draft);
@@ -119,6 +141,8 @@ final class ChecklistWorkspace {
         state.putString("uid", uid);
         state.putString("role", role);
         state.putString("machine", machineId);
+        state.putBoolean("historyScreen", historyScreen);
+        state.putInt("historyLimit", historyLimit);
         state.putString("operationId", operationId);
         if (justification != null) {
             state.putString("justification", justification.getText().toString());
@@ -285,7 +309,10 @@ final class ChecklistWorkspace {
         if (supervisor) {
             button(panel, "Cadastrar modelo").setOnClickListener(view -> showModelEditor(null));
         }
-        heading(supervisor ? "Máquinas bloqueadas" : "Escolha uma máquina");
+        heading(supervisor ? "Situação das máquinas hoje" : "Escolha uma máquina");
+        if (supervisor) {
+            message().setText("Selecione uma máquina para ver o histórico.");
+        }
         if (!feedback.isEmpty()) {
             message().setText(feedback);
         }
@@ -297,6 +324,11 @@ final class ChecklistWorkspace {
         panel.addView(list, new LinearLayout.LayoutParams(-1, -2));
         if (panel.getVisibility() != View.VISIBLE) {
             return;
+        }
+        if (supervisor) {
+            ZonedDateTime now = ZonedDateTime.now(FACTORY_ZONE);
+            ZonedDateTime midnight = now.toLocalDate().plusDays(1).atStartOfDay(FACTORY_ZONE);
+            clock.postDelayed(refreshDay, Duration.between(now, midnight).toMillis() + 100);
         }
         int requestPage = page;
         machinesListener = db.collection("maquinas").orderBy("nome")
@@ -316,16 +348,7 @@ final class ChecklistWorkspace {
                         list.setAdapter(null);
                         return;
                     }
-                    List<DocumentSnapshot> machines = new ArrayList<>();
-                    for (DocumentSnapshot machine : snapshot.getDocuments()) {
-                        if (!supervisor || InspectionStore.BLOCKED.equals(machine.get("status"))) {
-                            machines.add(machine);
-                        }
-                    }
-                    if (machines.isEmpty()) {
-                        message.setText(supervisor ? "Nenhuma máquina bloqueada." : "Nenhuma máquina cadastrada.");
-                    }
-                    list.setAdapter(new MachineAdapter(machines));
+                    list.setAdapter(new MachineAdapter(snapshot.getDocuments()));
                 });
     }
 
@@ -477,13 +500,76 @@ final class ChecklistWorkspace {
                 });
     }
 
+    private void showHistory(String id, int limit) {
+        stopMachines();
+        resetPanel();
+        draft = null;
+        machineId = id;
+        historyScreen = true;
+        historyLimit = limit;
+        button(panel, "Voltar para o painel").setOnClickListener(view -> showMachines());
+        TextView title = heading("Histórico da máquina");
+        Button unlock = button(panel, "Desbloquear máquina");
+        unlock.setVisibility(View.GONE);
+        unlock.setOnClickListener(view -> showRelease(id, null));
+
+        TextView status = message();
+        status.setText("Carregando inspeções…");
+        RecyclerView list = new RecyclerView(activity);
+        list.setLayoutManager(new LinearLayoutManager(activity));
+        list.setNestedScrollingEnabled(false);
+        panel.addView(list, new LinearLayout.LayoutParams(-1, -2));
+        Button more = button(panel, "Mostrar mais inspeções");
+        more.setVisibility(View.GONE);
+        more.setOnClickListener(view -> showHistory(id, limit + HISTORY_PAGE_SIZE));
+        if (panel.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        int requestPage = page;
+        machineDetailsListener = db.collection("maquinas").document(id)
+                .addSnapshotListener(MetadataChanges.INCLUDE, (machine, error) -> {
+                    if (requestPage != page || machineDetailsListener == null) {
+                        return;
+                    }
+                    boolean current = error == null && machine != null && machine.exists()
+                            && !machine.getMetadata().isFromCache();
+                    Object name = current ? machine.get("nome") : null;
+                    title.setText("Histórico · " + (name instanceof String label ? label : id));
+                    boolean blocked = current && InspectionStore.BLOCKED.equals(machine.get("status"));
+                    unlock.setVisibility(blocked ? View.VISIBLE : View.GONE);
+                });
+        machinesListener = db.collection("inspecoes")
+                .whereEqualTo("maquinaId", id)
+                .orderBy("data", Query.Direction.DESCENDING)
+                .limit((long) limit + 1)
+                .addSnapshotListener(MetadataChanges.INCLUDE, (snapshot, error) -> {
+                    if (requestPage != page || machinesListener == null) {
+                        return;
+                    }
+                    boolean ready = error == null && snapshot != null
+                            && !snapshot.getMetadata().isFromCache();
+                    if (!ready) {
+                        status.setText(error != null ? "Não foi possível carregar o histórico."
+                                : "Aguardando dados atualizados do Firestore…");
+                        list.setAdapter(null);
+                        more.setVisibility(View.GONE);
+                        return;
+                    }
+                    List<DocumentSnapshot> rows = snapshot.getDocuments();
+                    status.setText(rows.isEmpty() ? "Nenhuma inspeção registrada para esta máquina." : "");
+                    list.setAdapter(new HistoryAdapter(rows.subList(0, Math.min(limit, rows.size()))));
+                    more.setVisibility(rows.size() > limit ? View.VISIBLE : View.GONE);
+                });
+    }
+
     private void showRelease(String id, Bundle restored) {
         stopMachines();
         resetPanel();
         machineId = id;
         draft = restored;
         operationId = restored == null ? null : restored.getString("operationId");
-        button(panel, "Voltar para máquinas").setOnClickListener(view -> showMachines());
+        button(panel, "Voltar para o histórico").setOnClickListener(view -> showHistory(id, HISTORY_PAGE_SIZE));
         TextView status = message();
         status.setText("Carregando máquina…");
         int requestPage = page;
@@ -555,6 +641,8 @@ final class ChecklistWorkspace {
         modelType = null;
         checklistType = null;
         machineList = false;
+        historyScreen = false;
+        historyLimit = HISTORY_PAGE_SIZE;
         operationId = null;
         justification = null;
         blockedInspectionId = null;
@@ -563,6 +651,11 @@ final class ChecklistWorkspace {
     }
 
     private void stopMachines() {
+        clock.removeCallbacks(refreshDay);
+        if (machineDetailsListener != null) {
+            machineDetailsListener.remove();
+            machineDetailsListener = null;
+        }
         if (machinesListener != null) {
             machinesListener.remove();
             machinesListener = null;
@@ -609,6 +702,68 @@ final class ChecklistWorkspace {
         return field;
     }
 
+    private static String dailyStatus(DocumentSnapshot machine) {
+        if (InspectionStore.BLOCKED.equals(machine.get("status"))) {
+            return "Bloqueada";
+        }
+        Object inspectedAt = machine.get("ultimaInspecaoEm");
+        if (InspectionStore.RELEASED.equals(machine.get("status"))
+                && inspectedAt instanceof Timestamp time
+                && LocalDate.now(FACTORY_ZONE).equals(time.toDate().toInstant().atZone(FACTORY_ZONE).toLocalDate())) {
+            return "Liberada";
+        }
+        return "Sem inspeção";
+    }
+
+    private final class HistoryAdapter extends RecyclerView.Adapter<HistoryHolder> {
+        private final List<DocumentSnapshot> rows;
+
+        HistoryAdapter(List<DocumentSnapshot> rows) {
+            this.rows = rows;
+        }
+
+        @Override
+        public HistoryHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            TextView row = new TextView(parent.getContext());
+            row.setTextColor(activity.getColor(R.color.graphite));
+            row.setTextSize(16);
+            row.setMinHeight((int) (72 * row.getResources().getDisplayMetrics().density));
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
+            return new HistoryHolder(row);
+        }
+
+        @Override
+        public void onBindViewHolder(HistoryHolder holder, int position) {
+            DocumentSnapshot inspection = rows.get(position);
+            Object email = inspection.get("operadorEmail");
+            Object uid = inspection.get("operadorUid");
+            Object date = inspection.get("data");
+            Object result = inspection.get("resultado");
+            String operator = email instanceof String address && !address.isEmpty()
+                    ? address : uid instanceof String id ? id : "Operador desconhecido";
+            String when = date instanceof Timestamp time
+                    ? HISTORY_DATE.format(time.toDate().toInstant()) : "Data indisponível";
+            String outcome = InspectionStore.BLOCKED.equals(result) ? "Bloqueada"
+                    : InspectionStore.RELEASED.equals(result) ? "Liberada" : "Resultado indisponível";
+            holder.row.setText(operator + "\n" + when + " · " + outcome);
+        }
+
+        @Override
+        public int getItemCount() {
+            return rows.size();
+        }
+    }
+
+    private static final class HistoryHolder extends RecyclerView.ViewHolder {
+        private final TextView row;
+
+        HistoryHolder(TextView row) {
+            super(row);
+            this.row = row;
+        }
+    }
+
     private final class MachineAdapter extends RecyclerView.Adapter<MachineHolder> {
         private final List<DocumentSnapshot> machines;
 
@@ -631,14 +786,18 @@ final class ChecklistWorkspace {
             String label = name instanceof String text ? text : machine.getId();
             boolean blocked = InspectionStore.BLOCKED.equals(machine.get("status"));
             boolean supervisor = "supervisor".equals(role);
-            holder.button.setText(blocked ? label + " · Bloqueada" : label);
-            int background = blocked ? R.color.blocked_red : R.color.surface;
-            int foreground = blocked ? R.color.surface : R.color.graphite;
+            String status = dailyStatus(machine);
+            holder.button.setText(supervisor ? label + " · " + status
+                    : blocked ? label + " · Bloqueada" : label);
+            int background = blocked ? R.color.blocked_red
+                    : supervisor && "Liberada".equals(status) ? R.color.released_green
+                    : R.color.surface;
+            int foreground = background == R.color.surface ? R.color.graphite : R.color.surface;
             holder.button.setBackgroundTintList(ColorStateList.valueOf(activity.getColor(background)));
             holder.button.setTextColor(activity.getColor(foreground));
             holder.button.setOnClickListener(view -> {
                 if (supervisor) {
-                    showRelease(machine.getId(), null);
+                    showHistory(machine.getId(), HISTORY_PAGE_SIZE);
                 } else {
                     loadChecklist(machine.getId(), null);
                 }

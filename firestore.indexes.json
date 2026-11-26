@@ -1,0 +1,19 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "inspecoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "maquinaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "data",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -144,6 +144,7 @@ service cloud.firestore {
     }
 
     match /inspecoes/{id} {
+      allow list: if hasProfile('supervisor');
       allow get: if hasProfile('supervisor')
         || (hasProfile('operador') && (resource == null || resource.data.operadorUid == request.auth.uid));
       allow create: if hasProfile('operador') && validInspection(request.resource.data, id);

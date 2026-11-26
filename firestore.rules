@@ -2,8 +2,156 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasProfile(profile) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.perfil == profile;
+    }
+
+    function validItem(item) {
+      return item is map && item.keys().hasOnly(['texto', 'critico'])
+        && item.texto is string && item.texto.size() <= 160
+        && item.texto.matches('.*[^\\s].*') && item.critico is bool;
+    }
+
+    function validItems(items) {
+      return items is list && items.size() >= 1 && items.size() <= 10
+        && validItem(items[0])
+        && (items.size() < 2 || validItem(items[1]))
+        && (items.size() < 3 || validItem(items[2]))
+        && (items.size() < 4 || validItem(items[3]))
+        && (items.size() < 5 || validItem(items[4]))
+        && (items.size() < 6 || validItem(items[5]))
+        && (items.size() < 7 || validItem(items[6]))
+        && (items.size() < 8 || validItem(items[7]))
+        && (items.size() < 9 || validItem(items[8]))
+        && (items.size() < 10 || validItem(items[9]));
+    }
+
+    function machinePath(id) {
+      return /databases/$(database)/documents/maquinas/$(id);
+    }
+
+    function inspectionPath(id) {
+      return /databases/$(database)/documents/inspecoes/$(id);
+    }
+
+    function releasePath(id) {
+      return /databases/$(database)/documents/liberacoes/$(id);
+    }
+
+    function nonBlank(text) {
+      return text is string && text.size() <= 500 && text.matches('(?s).*[^\\s].*');
+    }
+
+    function validAnswer(answer) {
+      return answer is map && answer.keys().hasOnly(['conforme', 'observacao'])
+        && answer.conforme is bool
+        && (answer.conforme ? answer.observacao == '' : nonBlank(answer.observacao));
+    }
+
+    function answersMatch(items, answers) {
+      return answers is list && answers.size() == items.size()
+        && validAnswer(answers[0])
+        && (items.size() < 2 || validAnswer(answers[1]))
+        && (items.size() < 3 || validAnswer(answers[2]))
+        && (items.size() < 4 || validAnswer(answers[3]))
+        && (items.size() < 5 || validAnswer(answers[4]))
+        && (items.size() < 6 || validAnswer(answers[5]))
+        && (items.size() < 7 || validAnswer(answers[6]))
+        && (items.size() < 8 || validAnswer(answers[7]))
+        && (items.size() < 9 || validAnswer(answers[8]))
+        && (items.size() < 10 || validAnswer(answers[9]));
+    }
+
+    function criticalFailure(items, answers, i) {
+      return i < items.size() && items[i].critico && !answers[i].conforme;
+    }
+
+    function inspectionResult(items, answers) {
+      return (criticalFailure(items, answers, 0) || criticalFailure(items, answers, 1)
+        || criticalFailure(items, answers, 2) || criticalFailure(items, answers, 3)
+        || criticalFailure(items, answers, 4) || criticalFailure(items, answers, 5)
+        || criticalFailure(items, answers, 6) || criticalFailure(items, answers, 7)
+        || criticalFailure(items, answers, 8) || criticalFailure(items, answers, 9))
+        ? 'bloqueada' : 'liberada';
+    }
+
+    function validInspection(data, id) {
+      let previous = get(machinePath(data.maquinaId)).data;
+      let updated = getAfter(machinePath(data.maquinaId)).data;
+      let items = get(/databases/$(database)/documents/modelos/$(data.tipo)).data.itens;
+      return data.keys().hasOnly(['maquinaId', 'tipo', 'operadorUid', 'operadorEmail',
+                                  'itens', 'respostas', 'resultado', 'data'])
+        && data.operadorUid == request.auth.uid && data.operadorEmail == request.auth.token.email
+        && data.data == request.time && previous.tipo == data.tipo
+        && previous.get('status', '') != 'bloqueada'
+        && previous.get('ultimaInspecaoId', '') != id
+        && updated.ultimaInspecaoId == id && updated.ultimaInspecaoEm == request.time
+        && updated.status == data.resultado
+        && data.itens == items && validItems(items) && answersMatch(items, data.respostas)
+        && data.resultado == inspectionResult(items, data.respostas);
+    }
+
+    function validRelease(data, id) {
+      let previous = get(machinePath(data.maquinaId)).data;
+      let updated = getAfter(machinePath(data.maquinaId)).data;
+      return data.keys().hasOnly(['maquinaId', 'inspecaoId', 'supervisorUid', 'justificativa', 'data'])
+        && data.supervisorUid == request.auth.uid && data.data == request.time
+        && nonBlank(data.justificativa) && previous.status == 'bloqueada'
+        && previous.ultimaInspecaoId == data.inspecaoId
+        && previous.get('ultimaLiberacaoId', '') != id
+        && updated.status == 'liberada' && updated.ultimaLiberacaoId == id;
+    }
+
+    function recordsInspection(machineId, next) {
+      let path = inspectionPath(next.ultimaInspecaoId);
+      let event = getAfter(path).data;
+      return !exists(path) && event.maquinaId == machineId
+        && event.operadorUid == request.auth.uid && event.data == request.time
+        && event.resultado == next.status && next.ultimaInspecaoEm == request.time;
+    }
+
+    function recordsRelease(machineId, next) {
+      let path = releasePath(next.ultimaLiberacaoId);
+      let event = getAfter(path).data;
+      return !exists(path) && event.maquinaId == machineId
+        && event.supervisorUid == request.auth.uid && event.data == request.time
+        && event.inspecaoId == resource.data.ultimaInspecaoId && next.status == 'liberada';
+    }
+
     match /usuarios/{uid} {
       allow get: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /modelos/{tipo} {
+      allow get: if hasProfile('supervisor') || hasProfile('operador');
+      allow create: if hasProfile('supervisor')
+        && tipo.matches('[a-z][a-z0-9-]{0,39}')
+        && request.resource.data.keys().hasOnly(['itens'])
+        && validItems(request.resource.data.itens);
+    }
+
+    match /maquinas/{id} {
+      allow get, list: if hasProfile('operador') || hasProfile('supervisor');
+      allow update: if hasProfile('operador') && resource.data.get('status', '') != 'bloqueada'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'ultimaInspecaoId', 'ultimaInspecaoEm'])
+        && recordsInspection(id, request.resource.data);
+      allow update: if hasProfile('supervisor') && resource.data.status == 'bloqueada'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'ultimaLiberacaoId'])
+        && recordsRelease(id, request.resource.data);
+    }
+
+    match /inspecoes/{id} {
+      allow get: if hasProfile('supervisor')
+        || (hasProfile('operador') && (resource == null || resource.data.operadorUid == request.auth.uid));
+      allow create: if hasProfile('operador') && validInspection(request.resource.data, id);
+    }
+
+    match /liberacoes/{id} {
+      allow get: if hasProfile('supervisor');
+      allow create: if hasProfile('supervisor') && validRelease(request.resource.data, id);
     }
   }
 }

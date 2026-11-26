@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
     private TextView accountMessage;
     private Button submit;
     private Button switchMode;
+    private ChecklistWorkspace workspace;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +55,8 @@ public final class MainActivity extends Activity {
         accountMessage = findViewById(R.id.account_message);
         submit = findViewById(R.id.submit);
         switchMode = findViewById(R.id.switch_mode);
+        workspace = new ChecklistWorkspace(this, findViewById(R.id.checklist_workspace),
+                savedInstanceState == null ? null : savedInstanceState.getBundle("checklist"));
 
         registering = savedInstanceState != null && savedInstanceState.getBoolean("registering");
         if (getLastNonConfigurationInstance() instanceof String draft) {
@@ -81,6 +84,7 @@ public final class MainActivity extends Activity {
     protected void onStop() {
         auth.removeAuthStateListener(authListener);
         stopProfileListener();
+        workspace.pause();
         super.onStop();
     }
 
@@ -88,6 +92,7 @@ public final class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putBoolean("registering", registering);
+        state.putBundle("checklist", workspace.save());
     }
 
     @Override
@@ -158,6 +163,7 @@ public final class MainActivity extends Activity {
         authForm.setVisibility(user == null ? View.VISIBLE : View.GONE);
         account.setVisibility(user == null ? View.GONE : View.VISIBLE);
         if (user == null) {
+            workspace.clear();
             return;
         }
 
@@ -178,17 +184,21 @@ public final class MainActivity extends Activity {
                     }
                     accountTitle.setText(R.string.account_title);
                     if (error != null || document == null || document.getMetadata().isFromCache()) {
+                        workspace.pause();
                         accountMessage.setText(R.string.profile_unavailable);
                         return;
                     }
                     Object profile = document.get("perfil");
                     if ("operador".equals(profile)) {
+                        workspace.show(user.getUid(), "operador");
                         accountTitle.setText(R.string.operator);
                         accountMessage.setText(user.getEmail());
                     } else if ("supervisor".equals(profile)) {
+                        workspace.show(user.getUid(), "supervisor");
                         accountTitle.setText(R.string.supervisor);
                         accountMessage.setText(user.getEmail());
                     } else {
+                        workspace.clear();
                         accountMessage.setText(R.string.profile_pending);
                     }
                 });

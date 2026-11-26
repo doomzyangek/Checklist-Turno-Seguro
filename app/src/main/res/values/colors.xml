@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#F4F6F8</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="graphite">#17212B</color>
+    <color name="text_secondary">#5F6B76</color>
+    <color name="industrial_blue">#1565C0</color>
+    <color name="safety_amber">#F9A825</color>
+    <color name="blocked_red">#C62828</color>
+    <color name="released_green">#2E7D32</color>
+</resources>

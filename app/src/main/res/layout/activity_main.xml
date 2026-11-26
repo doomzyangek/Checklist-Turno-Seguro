@@ -28,5 +28,81 @@
             android:textColor="@color/graphite"
             android:textSize="18sp" />
 
+        <LinearLayout
+            android:id="@+id/auth_form"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/form_title"
+                style="@style/TextAppearance.TurnoSeguro.Section" />
+
+            <EditText
+                android:id="@+id/email"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints="emailAddress"
+                android:hint="@string/email"
+                android:inputType="textEmailAddress"
+                android:minHeight="48dp" />
+
+            <EditText
+                android:id="@+id/password"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autofillHints="password"
+                android:hint="@string/password"
+                android:inputType="textPassword"
+                android:minHeight="48dp"
+                android:saveEnabled="false" />
+
+            <TextView
+                android:id="@+id/form_message"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:textColor="@color/blocked_red" />
+
+            <Button
+                android:id="@+id/submit"
+                style="@style/Widget.TurnoSeguro.PrimaryButton" />
+
+            <Button
+                android:id="@+id/switch_mode"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:textColor="@color/industrial_blue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/account"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/account_title"
+                style="@style/TextAppearance.TurnoSeguro.Section" />
+
+            <TextView
+                android:id="@+id/account_message"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:textColor="@color/graphite"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/sign_out"
+                style="@style/Widget.TurnoSeguro.PrimaryButton"
+                android:text="@string/sign_out" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

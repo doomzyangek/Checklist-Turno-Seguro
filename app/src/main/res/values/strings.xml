@@ -2,4 +2,24 @@
 <resources>
     <string name="app_name">Turno Seguro</string>
     <string name="app_subtitle">Inspeção pré-operacional</string>
+    <string name="email">E-mail</string>
+    <string name="password">Senha</string>
+    <string name="sign_in">Entrar</string>
+    <string name="create_account">Criar conta</string>
+    <string name="back_to_sign_in">Voltar para entrar</string>
+    <string name="sign_out">Sair</string>
+    <string name="invalid_email">Informe um e-mail válido.</string>
+    <string name="short_password">Use pelo menos 6 caracteres.</string>
+    <string name="missing_password">Informe sua senha.</string>
+    <string name="network_error">Verifique a conexão e tente novamente.</string>
+    <string name="weak_password">A senha não atende aos requisitos de segurança.</string>
+    <string name="account_exists">Já existe uma conta com esse e-mail.</string>
+    <string name="registration_failed">Não foi possível criar a conta. Confira os dados e tente novamente.</string>
+    <string name="sign_in_failed">Não foi possível entrar. Confira o e-mail e a senha e tente novamente.</string>
+    <string name="account_title">Minha conta</string>
+    <string name="loading_profile">Consultando o perfil…</string>
+    <string name="profile_unavailable">Não foi possível confirmar seu perfil. Verifique a conexão ou fale com a equipe do projeto.</string>
+    <string name="profile_pending">Seu acesso está pendente. Solicite à equipe do projeto a configuração do seu perfil.</string>
+    <string name="operator">Operador</string>
+    <string name="supervisor">Supervisor</string>
 </resources>

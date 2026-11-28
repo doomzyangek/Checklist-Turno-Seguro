@@ -7,6 +7,42 @@ Projeto 2 · Checklist Pré-Turno
 
 O Turno Seguro é um aplicativo acadêmico de inspeção antes do início da operação. A proposta é registrar o checklist por máquina e informar ao supervisor quando uma não conformidade crítica exige o bloqueio no sistema.
 
+## O problema
+
+Antes de ligar uma prensa ou um torno, o operador deveria conferir proteções, botão de emergência e vazamentos. No papel, a folha fica pendurada na máquina, é preenchida com o mesmo X todo dia e ninguém olha. O Turno Seguro transforma uma resposta "não conforme" numa consequência real: se um item crítico falha, a máquina fica bloqueada no sistema até o supervisor liberar com uma justificativa.
+
+## Perfis
+
+| Perfil | O que faz no app |
+|---|---|
+| Operador | Escolhe a máquina, responde ao checklist e envia a inspeção |
+| Supervisor | Cadastra os modelos de checklist, acompanha o painel do dia, consulta o histórico e desbloqueia máquinas com justificativa |
+
+O perfil fica no documento `usuarios/{uid}`, no campo `perfil`, e é definido pela equipe no console do Firebase. O usuário não escolhe o próprio perfil no app.
+
+## Contas de teste
+
+| Perfil | E-mail |
+|---|---|
+| Supervisor | _(preencher)_ |
+| Operador | _(preencher)_ |
+
+As senhas de demonstração são passadas ao professor e ao grupo por um canal privado e não ficam no repositório.
+
+## Telas
+
+Os prints ficam em [`DOCS/prints`](DOCS/prints) e nas pastas de evidências de cada história em [`DOCS/evidencias`](DOCS/evidencias).
+
+| Tela | Print |
+|---|---|
+| Login e cadastro | _(adicionar)_ |
+| Cadastro de modelo (supervisor) | _(adicionar)_ |
+| Checklist da máquina (operador) | _(adicionar)_ |
+| Observação obrigatória | _(adicionar)_ |
+| Painel do dia (supervisor) | _(adicionar)_ |
+| Histórico da máquina | _(adicionar)_ |
+| Desbloqueio com justificativa | _(adicionar)_ |
+
 ## Desenvolvimento local
 
 1. Configure um JDK 17 e o Android SDK com a plataforma Android 36. É possível usar o Android Studio ou as ferramentas de linha de comando do Android SDK.

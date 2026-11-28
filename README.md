@@ -34,6 +34,8 @@ Para instalar o APK, copie o arquivo para um celular Android 8.0 ou superior e a
 
 O app inclui cadastro, login, perfis, modelos, envio da inspeção, desbloqueio com justificativa, painel diário do supervisor e histórico por máquina. O APK de debug da versão 0.1.0 foi compilado e sua assinatura foi verificada. A validação dos fluxos no celular, com o Firebase e as contas de demonstração, ainda está pendente.
 
+O [checklist de requisitos](DOCS/Checklist_CORE_e_Nucleo_Comum.docx) registra o que falta validar. As [histórias CORE](DOCS/Historias_CORE.md) trazem os critérios de aceite para o teste e para as issues do GitHub Projects.
+
 ## Preparar e testar um checklist
 
 1. No console do Firestore, em **Dados**, crie a coleção `maquinas` com um documento de ID `prensa-01`. Adicione os campos de texto `nome` com valor `Prensa 01` e `tipo` com valor `prensa`.
